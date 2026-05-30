@@ -1,0 +1,28 @@
+server:
+  port: 8090
+  mode: debug
+
+database:
+  host: localhost
+  port: 3306
+  user: root
+  password: "your_password_here"
+  database: oops_reader
+  max_open_conns: 20
+  max_idle_conns: 5
+
+admin:
+  username: admin
+  password_hash: "$2a$12$replace-with-bcrypt-hash"
+  token_secret: "change-this-manager-token-secret"
+  access_token_expiry: 8h
+
+catalog:
+  storage:
+    provider: local
+    root: /data/oops-reader/catalog
+    temp_root: /data/oops-reader/catalog-tmp
+
+log:
+  level: info
+  format: console
