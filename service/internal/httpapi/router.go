@@ -77,6 +77,7 @@ func NewRouter(deps Deps) *gin.Engine {
 	admin.GET("/catalog/books/:book_key", AdminRequired(authService), catalogHandler.Get)
 	admin.PATCH("/catalog/books/:book_key", AdminRequired(authService), catalogHandler.Update)
 	admin.PATCH("/catalog/books/:book_key/status", AdminRequired(authService), catalogHandler.UpdateStatus)
+	admin.GET("/catalog/books/:book_key/cover", AdminRequired(authService), catalogHandler.Cover)
 
 	// Import Jobs (async book import)
 	importJobStore := importjob.NewMySQLStore(deps.DB)

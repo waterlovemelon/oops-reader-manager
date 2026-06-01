@@ -1,10 +1,10 @@
-import { UploadOutlined, SearchOutlined, ReloadOutlined, StopOutlined, ClockCircleOutlined, SyncOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
-import { Button, Card, Input, Modal, Select, Space, Table, Tag, Upload, message, Form, Progress, Tooltip } from 'antd';
+import { UploadOutlined, SearchOutlined, ReloadOutlined, StopOutlined, ClockCircleOutlined, SyncOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined } from '@ant-design/icons';
+import { Button, Card, Descriptions, Input, Modal, Select, Space, Table, Tag, Typography, Upload, message, Form, Progress, Tooltip } from 'antd';
 import type { UploadProps } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CatalogBook, ImportJob, listBooks, updateBook, updateBookStatus,
-  createImportJob, getImportJob, retryImportJob, cancelImportJob,
+  createImportJob, getImportJob, retryImportJob, cancelImportJob, fetchBookCover,
 } from '../api/catalog';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -35,6 +35,12 @@ const STAGE_LABELS: Record<string, string> = {
   finished: '完成',
 };
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
 export function BooksPage() {
   const [books, setBooks] = useState<CatalogBook[]>([]);
   const [loading, setLoading] = useState(false);
@@ -45,6 +51,8 @@ export function BooksPage() {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [editBook, setEditBook] = useState<CatalogBook | null>(null);
   const [editForm] = Form.useForm();
+  const [detailBook, setDetailBook] = useState<CatalogBook | null>(null);
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
 
   // Import jobs state
   const [importJobs, setImportJobs] = useState<ImportJob[]>([]);
@@ -209,6 +217,20 @@ export function BooksPage() {
     }
   };
 
+  const handleDetail = async (book: CatalogBook) => {
+    setDetailBook(book);
+    if (coverUrl) { URL.revokeObjectURL(coverUrl); setCoverUrl(null); }
+    if (book.format === 'epub') {
+      const url = await fetchBookCover(book.book_key);
+      setCoverUrl(url);
+    }
+  };
+
+  // Cleanup blob URL on unmount.
+  useEffect(() => {
+    return () => { if (coverUrl) URL.revokeObjectURL(coverUrl); };
+  }, [coverUrl]);
+
   return (
     <>
       {/* Active import jobs */}
@@ -327,9 +349,10 @@ export function BooksPage() {
             },
             { title: '上传时间', dataIndex: 'uploaded_at', width: 170 },
             {
-              title: '操作', width: 200,
+              title: '操作', width: 260,
               render: (_: unknown, record: CatalogBook) => (
                 <Space size="small">
+                  <Button size="small" icon={<EyeOutlined />} onClick={() => handleDetail(record)}>详情</Button>
                   <Button size="small" onClick={() => handleEdit(record)}>编辑</Button>
                   {record.status === 'draft' && (
                     <Button size="small" type="primary" onClick={() => handleStatusChange(record.book_key, 'active')}>发布</Button>
@@ -377,6 +400,51 @@ export function BooksPage() {
             <Input />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="书籍详情"
+        open={!!detailBook}
+        onCancel={() => { setDetailBook(null); if (coverUrl) { URL.revokeObjectURL(coverUrl); setCoverUrl(null); } }}
+        footer={null}
+        width={640}
+        destroyOnHidden
+      >
+        {detailBook && (
+          <div style={{ display: 'flex', gap: 24 }}>
+            <div style={{ flexShrink: 0, width: 180 }}>
+              {detailBook.format === 'epub' ? (
+                coverUrl ? (
+                  <img src={coverUrl} alt={detailBook.title} style={{ width: '100%', borderRadius: 4 }} />
+                ) : (
+                  <div style={{ width: 180, height: 240, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 4 }}>
+                    加载封面中...
+                  </div>
+                )
+              ) : (
+                <div style={{ width: 180, height: 240, background: '#f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 4, fontSize: 24, color: '#999' }}>
+                  {detailBook.format.toUpperCase()}
+                </div>
+              )}
+            </div>
+            <Descriptions column={1} size="small" style={{ flex: 1 }}>
+              <Descriptions.Item label="书名">{detailBook.title}</Descriptions.Item>
+              <Descriptions.Item label="作者">{detailBook.author || '-'}</Descriptions.Item>
+              <Descriptions.Item label="简介">{detailBook.description || '-'}</Descriptions.Item>
+              <Descriptions.Item label="格式"><Tag>{detailBook.format}</Tag></Descriptions.Item>
+              <Descriptions.Item label="语言">{detailBook.language || '-'}</Descriptions.Item>
+              <Descriptions.Item label="章节">{detailBook.chapter_count}</Descriptions.Item>
+              <Descriptions.Item label="文件名">{detailBook.filename}</Descriptions.Item>
+              <Descriptions.Item label="文件大小">{formatFileSize(detailBook.file_size)}</Descriptions.Item>
+              <Descriptions.Item label="SHA1"><Typography.Text copyable code>{detailBook.content_sha1}</Typography.Text></Descriptions.Item>
+              <Descriptions.Item label="状态"><Tag color={STATUS_COLORS[detailBook.status]}>{detailBook.status}</Tag></Descriptions.Item>
+              <Descriptions.Item label="来源">{detailBook.source}</Descriptions.Item>
+              <Descriptions.Item label="上传时间">{detailBook.uploaded_at}</Descriptions.Item>
+              <Descriptions.Item label="发布时间">{detailBook.published_at || '-'}</Descriptions.Item>
+              <Descriptions.Item label="更新者">{detailBook.updated_by || '-'}</Descriptions.Item>
+            </Descriptions>
+          </div>
+        )}
       </Modal>
     </>
   );
