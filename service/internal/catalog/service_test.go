@@ -20,6 +20,25 @@ func (s *fakeCatalogStore) FindBySHA1(ctx context.Context, sha1 string) (*Book, 
 	return nil, ErrNotFound
 }
 
+func (s *fakeCatalogStore) FindByKey(ctx context.Context, bookKey string) (*Book, error) {
+	for _, book := range s.bySHA {
+		if book.BookKey == bookKey {
+			return &book, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+func (s *fakeCatalogStore) List(ctx context.Context, query string, status BookStatus, limit, offset int) ([]Book, int, error) {
+	var result []Book
+	for _, book := range s.bySHA {
+		if status == "" || book.Status == status {
+			result = append(result, book)
+		}
+	}
+	return result, len(result), nil
+}
+
 func (s *fakeCatalogStore) Create(ctx context.Context, book Book) error {
 	s.created = append(s.created, book)
 	return nil

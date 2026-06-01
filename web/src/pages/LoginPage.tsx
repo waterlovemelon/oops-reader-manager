@@ -9,7 +9,7 @@ export function LoginPage() {
   async function handleFinish(values: { username: string; password: string }) {
     try {
       const result = await login(values.username, values.password);
-      setAccessToken(result.access_token);
+      setAccessToken(result.data.access_token);
       navigate('/');
     } catch (error) {
       message.error(error instanceof Error ? error.message : '登录失败');

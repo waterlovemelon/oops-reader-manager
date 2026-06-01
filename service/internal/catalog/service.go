@@ -36,6 +36,10 @@ func NewService(store Store, storage *LocalStorage, importers []Importer) *Servi
 	return &Service{store: store, storage: storage, importers: byFormat}
 }
 
+func (s *Service) Store() Store {
+	return s.store
+}
+
 func (s *Service) ImportUploadedFile(ctx context.Context, input UploadInput) (Book, error) {
 	ext := strings.ToLower(filepath.Ext(input.OriginalFilename))
 	format := strings.TrimPrefix(ext, ".")

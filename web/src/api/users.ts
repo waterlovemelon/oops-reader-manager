@@ -1,4 +1,5 @@
 import { request } from './http';
+import { ListResponse } from './catalog';
 
 export interface User {
   id: string;
@@ -8,9 +9,17 @@ export interface User {
   created_at: string;
 }
 
-export function listUsers(q?: string, page?: number) {
+export function listUsers(q?: string, page?: number, pageSize?: number) {
   const params = new URLSearchParams();
   if (q) params.set('q', q);
   if (page) params.set('page', String(page));
-  return request<{ data: User[]; pagination: { page: number; page_size: number; total: number } }>(`/admin/users?${params}`);
+  if (pageSize) params.set('page_size', String(pageSize));
+  return request<ListResponse<User>>(`/admin/users?${params}`);
+}
+
+export function updateUserStatus(id: string, status: string) {
+  return request<{ data: { id: string; status: string } }>(`/admin/users/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
 }

@@ -14,6 +14,10 @@ func (s *fakeStore) Create(ctx context.Context, entry Entry) error {
 	return nil
 }
 
+func (s *fakeStore) List(ctx context.Context, input ListInput) ([]Entry, int, error) {
+	return s.entries, len(s.entries), nil
+}
+
 func TestRecordRequiresActionAndResource(t *testing.T) {
 	store := &fakeStore{}
 	service := NewService(store)

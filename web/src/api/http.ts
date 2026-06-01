@@ -12,5 +12,5 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   if (!response.ok) {
     throw new Error(body.error ?? `Request failed: ${response.status}`);
   }
-  return body.data as T;
+  return body as T;
 }

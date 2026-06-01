@@ -6,6 +6,7 @@ import { LoginPage } from './pages/LoginPage';
 import { BooksPage } from './pages/BooksPage';
 import { UsersPage } from './pages/UsersPage';
 import { PostsPage } from './pages/PostsPage';
+import { AuditPage } from './pages/AuditPage';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   if (!getAccessToken()) {
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="books" element={<BooksPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="posts" element={<PostsPage />} />
+          <Route path="audit" element={<AuditPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

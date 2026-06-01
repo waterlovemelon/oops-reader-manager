@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 var ErrNotFound = errors.New("not found")
@@ -30,6 +31,69 @@ FROM catalog_books WHERE content_sha1 = ? AND status <> 'deleted' LIMIT 1`, sha1
 		return nil, fmt.Errorf("find catalog book by sha1: %w", err)
 	}
 	return &book, nil
+}
+
+func (s *MySQLStore) FindByKey(ctx context.Context, bookKey string) (*Book, error) {
+	row := s.db.QueryRowContext(ctx, `
+SELECT book_key, title, author, description, format, filename, storage_path, cover_storage_path,
+file_size, content_sha1, language, chapter_count, status, source, updated_by
+FROM catalog_books WHERE book_key = ? AND status <> 'deleted'`, bookKey)
+	book, err := scanBook(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find catalog book by key: %w", err)
+	}
+	return &book, nil
+}
+
+func (s *MySQLStore) List(ctx context.Context, query string, status BookStatus, limit, offset int) ([]Book, int, error) {
+	if limit < 1 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	where := "WHERE status <> 'deleted'"
+	args := []any{}
+	if status != "" {
+		where += " AND status = ?"
+		args = append(args, string(status))
+	}
+	query = strings.TrimSpace(query)
+	if query != "" {
+		where += " AND (LOWER(title) LIKE ? OR LOWER(author) LIKE ? OR book_key LIKE ?)"
+		like := "%" + strings.ToLower(query) + "%"
+		args = append(args, like, like, like)
+	}
+	var total int
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM catalog_books "+where, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count catalog books: %w", err)
+	}
+	listArgs := append(append([]any{}, args...), limit, offset)
+	rows, err := s.db.QueryContext(ctx, `
+SELECT book_key, title, author, description, format, filename, storage_path, cover_storage_path,
+file_size, content_sha1, language, chapter_count, status, source, updated_by
+FROM catalog_books `+where+`
+ORDER BY uploaded_at DESC
+LIMIT ? OFFSET ?`, listArgs...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list catalog books: %w", err)
+	}
+	defer rows.Close()
+	books := []Book{}
+	for rows.Next() {
+		book, err := scanBook(rows)
+		if err != nil {
+			return nil, 0, fmt.Errorf("scan catalog book: %w", err)
+		}
+		books = append(books, book)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterate catalog books: %w", err)
+	}
+	return books, total, nil
 }
 
 func (s *MySQLStore) Create(ctx context.Context, book Book) error {
