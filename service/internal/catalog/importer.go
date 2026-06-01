@@ -8,6 +8,7 @@ type ImportedBook struct {
 	Description    string
 	Language       string
 	ChapterCount   int
+	WordCount      int64
 	CoverMediaType string
 	CoverData      []byte
 }

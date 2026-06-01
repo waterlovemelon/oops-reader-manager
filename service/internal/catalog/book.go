@@ -24,6 +24,7 @@ type Book struct {
 	ContentSHA1      string
 	Language         string
 	ChapterCount     int
+	WordCount        int64
 	Status           BookStatus
 	Source           string
 	UploadedAt       *time.Time

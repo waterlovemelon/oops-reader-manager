@@ -21,7 +21,7 @@ func NewMySQLStore(db *sql.DB) *MySQLStore {
 func (s *MySQLStore) FindBySHA1(ctx context.Context, sha1 string) (*Book, error) {
 	row := s.db.QueryRowContext(ctx, `
 SELECT book_key, title, author, description, format, filename, storage_path, cover_storage_path,
-file_size, content_sha1, language, chapter_count, status, source, updated_by
+file_size, content_sha1, language, chapter_count, word_count, status, source, updated_by
 FROM catalog_books WHERE content_sha1 = ? AND status <> 'deleted' LIMIT 1`, sha1)
 	book, err := scanBook(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -36,7 +36,7 @@ FROM catalog_books WHERE content_sha1 = ? AND status <> 'deleted' LIMIT 1`, sha1
 func (s *MySQLStore) FindByKey(ctx context.Context, bookKey string) (*Book, error) {
 	row := s.db.QueryRowContext(ctx, `
 SELECT book_key, title, author, description, format, filename, storage_path, cover_storage_path,
-file_size, content_sha1, language, chapter_count, status, source, updated_by
+file_size, content_sha1, language, chapter_count, word_count, status, source, updated_by
 FROM catalog_books WHERE book_key = ? AND status <> 'deleted'`, bookKey)
 	book, err := scanBook(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -74,7 +74,7 @@ func (s *MySQLStore) List(ctx context.Context, query string, status BookStatus, 
 	listArgs := append(append([]any{}, args...), limit, offset)
 	rows, err := s.db.QueryContext(ctx, `
 SELECT book_key, title, author, description, format, filename, storage_path, cover_storage_path,
-file_size, content_sha1, language, chapter_count, status, source, updated_by
+file_size, content_sha1, language, chapter_count, word_count, status, source, updated_by
 FROM catalog_books `+where+`
 ORDER BY uploaded_at DESC
 LIMIT ? OFFSET ?`, listArgs...)
@@ -100,12 +100,13 @@ func (s *MySQLStore) Create(ctx context.Context, book Book) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO catalog_books
 (book_key, title, author, description, format, filename, storage_path, cover_storage_path,
-file_size, content_sha1, language, chapter_count, status, source, uploaded_at, updated_by)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)`,
+file_size, content_sha1, language, chapter_count, word_count, status, source, uploaded_at, updated_by)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)`,
 		book.BookKey, book.Title, nullableString(book.Author), nullableString(book.Description),
 		book.Format, book.Filename, book.StoragePath, nullableString(book.CoverStoragePath),
 		book.FileSize, nullableString(book.ContentSHA1), nullableString(book.Language),
-		book.ChapterCount, string(book.Status), book.Source, nullableString(book.UpdatedBy),
+		book.ChapterCount, nullableInt64(book.WordCount), string(book.Status), book.Source,
+		nullableString(book.UpdatedBy),
 	)
 	if err != nil {
 		return fmt.Errorf("create catalog book: %w", err)
@@ -150,10 +151,11 @@ type scanner interface {
 func scanBook(row scanner) (Book, error) {
 	var book Book
 	var author, description, coverPath, sha1, language, updatedBy sql.NullString
+	var wordCount sql.NullInt64
 	if err := row.Scan(
 		&book.BookKey, &book.Title, &author, &description, &book.Format, &book.Filename,
 		&book.StoragePath, &coverPath, &book.FileSize, &sha1, &language, &book.ChapterCount,
-		&book.Status, &book.Source, &updatedBy,
+		&wordCount, &book.Status, &book.Source, &updatedBy,
 	); err != nil {
 		return Book{}, err
 	}
@@ -163,11 +165,19 @@ func scanBook(row scanner) (Book, error) {
 	book.ContentSHA1 = sha1.String
 	book.Language = language.String
 	book.UpdatedBy = updatedBy.String
+	book.WordCount = wordCount.Int64
 	return book, nil
 }
 
 func nullableString(value string) any {
 	if value == "" {
+		return nil
+	}
+	return value
+}
+
+func nullableInt64(value int64) any {
+	if value <= 0 {
 		return nil
 	}
 	return value

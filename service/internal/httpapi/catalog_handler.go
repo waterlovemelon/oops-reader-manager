@@ -86,6 +86,24 @@ func (h *CatalogHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": bookJSON(*book)})
 }
 
+func (h *CatalogHandler) Cover(c *gin.Context) {
+	bookKey := c.Param("book_key")
+	cover, _, err := h.service.GetCover(c.Request.Context(), bookKey)
+	if err != nil {
+		if errors.Is(err, catalog.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "cover not found"})
+			return
+		}
+		if errors.Is(err, catalog.ErrUnsupportedFormat) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "cover not available for this format"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.Data(http.StatusOK, cover.MediaType, cover.Data)
+}
+
 type updateBookRequest struct {
 	Title       *string `json:"title"`
 	Author      *string `json:"author"`
@@ -205,10 +223,18 @@ func bookJSON(book catalog.Book) gin.H {
 		"content_sha1":    book.ContentSHA1,
 		"language":        book.Language,
 		"chapter_count":   book.ChapterCount,
+		"word_count":      nullableWordCount(book.WordCount),
 		"status":          string(book.Status),
 		"source":          book.Source,
 		"uploaded_at":     book.UploadedAt,
 		"published_at":    book.PublishedAt,
 		"updated_by":      book.UpdatedBy,
 	}
+}
+
+func nullableWordCount(value int64) any {
+	if value <= 0 {
+		return nil
+	}
+	return value
 }

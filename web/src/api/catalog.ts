@@ -15,6 +15,7 @@ export interface CatalogBook {
   content_sha1: string;
   language: string;
   chapter_count: number;
+  word_count?: number;
   status: string;
   source: string;
   uploaded_at: string;
@@ -143,4 +144,15 @@ export function cancelImportJob(jobID: string) {
   return request<{ data: { job_id: string; status: string } }>(`/admin/catalog/import-jobs/${encodeURIComponent(jobID)}/cancel`, {
     method: 'POST',
   });
+}
+
+export async function fetchBookCover(bookKey: string): Promise<string | null> {
+  const token = localStorage.getItem('manager_access_token');
+  const response = await fetch(
+    `${API_BASE_URL}/admin/catalog/books/${encodeURIComponent(bookKey)}/cover`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+  );
+  if (!response.ok) return null;
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
 }

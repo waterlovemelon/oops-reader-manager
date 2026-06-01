@@ -42,3 +42,23 @@ func TestTXTImporterFallsBackToSingleChapter(t *testing.T) {
 		t.Fatalf("chapters = %d", len(manifest.Chapters))
 	}
 }
+
+func TestTXTImporterCountsWords(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "words.txt")
+	body := "第一章 开始\n一二三\n\n第二章 继续\n四五"
+	if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+		t.Fatal(err)
+	}
+	importer := TXTImporter{}
+	inspected, err := importer.Inspect(context.Background(), path)
+	if err != nil {
+		t.Fatalf("inspect: %v", err)
+	}
+	if inspected.ChapterCount != 2 {
+		t.Fatalf("chapter_count = %d, want 2", inspected.ChapterCount)
+	}
+	if inspected.WordCount <= 0 {
+		t.Fatalf("word_count = %d, want > 0", inspected.WordCount)
+	}
+}

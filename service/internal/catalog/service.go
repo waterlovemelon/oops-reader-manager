@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -38,6 +39,31 @@ func NewService(store Store, storage *LocalStorage, importers []Importer) *Servi
 
 func (s *Service) Store() Store {
 	return s.store
+}
+
+// GetCover extracts the cover image from the book file on-the-fly.
+// Returns ErrUnsupportedFormat for non-EPUB books.
+func (s *Service) GetCover(ctx context.Context, bookKey string) (*Cover, string, error) {
+	book, err := s.store.FindByKey(ctx, bookKey)
+	if err != nil {
+		return nil, "", err
+	}
+	if book.Format != "epub" {
+		return nil, "", fmt.Errorf("%w: cover not available for format %s", ErrUnsupportedFormat, book.Format)
+	}
+	fullPath := filepath.Join(s.storage.Root(), filepath.FromSlash(book.StoragePath))
+	importer, ok := s.importers[book.Format]
+	if !ok {
+		return nil, "", ErrUnsupportedFormat
+	}
+	cover, err := importer.Cover(ctx, fullPath)
+	if err != nil {
+		return nil, "", err
+	}
+	if cover == nil {
+		return nil, "", ErrNotFound
+	}
+	return cover, book.Title, nil
 }
 
 func (s *Service) ImportUploadedFile(ctx context.Context, input UploadInput) (Book, error) {
@@ -82,6 +108,7 @@ func (s *Service) ImportUploadedFile(ctx context.Context, input UploadInput) (Bo
 		ContentSHA1:  sha,
 		Language:     inspected.Language,
 		ChapterCount: inspected.ChapterCount,
+		WordCount:    inspected.WordCount,
 		Status:       StatusDraft,
 		Source:       "admin_upload",
 		UploadedAt:   &now,

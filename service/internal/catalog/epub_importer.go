@@ -18,10 +18,15 @@ func (EPUBImporter) Inspect(ctx context.Context, filePath string) (ImportedBook,
 	if err != nil {
 		return ImportedBook{}, err
 	}
+	var wordCount int64
+	for _, ch := range book.Chapters {
+		wordCount += countReadableRunes(ch.Text)
+	}
 	return ImportedBook{
 		Title:          book.Title,
 		Author:         book.Author,
 		ChapterCount:   len(book.Chapters),
+		WordCount:      wordCount,
 		CoverMediaType: book.CoverMediaType,
 	}, nil
 }

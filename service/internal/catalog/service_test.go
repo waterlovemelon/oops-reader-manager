@@ -74,6 +74,9 @@ func TestImportUploadedTXTCreatesDraftBook(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "catalog", book.StoragePath)); err != nil {
 		t.Fatalf("final file missing: %v", err)
 	}
+	if book.WordCount <= 0 {
+		t.Fatalf("word_count = %d, want > 0", book.WordCount)
+	}
 }
 
 func TestImportUploadedFileRejectsUnsupportedFormat(t *testing.T) {

@@ -22,10 +22,15 @@ func (i TXTImporter) Inspect(ctx context.Context, filePath string) (ImportedBook
 	if err != nil {
 		return ImportedBook{}, err
 	}
+	var wordCount int64
+	for _, ch := range manifest.Chapters {
+		wordCount += countReadableRunes(ch.Text)
+	}
 	title := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
 	return ImportedBook{
 		Title:        title,
 		ChapterCount: len(manifest.Chapters),
+		WordCount:    wordCount,
 	}, nil
 }
 
@@ -73,4 +78,16 @@ func (i TXTImporter) Chapter(ctx context.Context, filePath string, chapterID str
 
 func (TXTImporter) Cover(ctx context.Context, filePath string) (*Cover, error) {
 	return nil, nil
+}
+
+// countReadableRunes counts non-whitespace runes in text.
+func countReadableRunes(text string) int64 {
+	var count int64
+	for _, r := range text {
+		if r == '\n' || r == '\r' || r == '\t' || r == ' ' {
+			continue
+		}
+		count++
+	}
+	return count
 }
