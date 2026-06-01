@@ -41,13 +41,24 @@ func (s *Service) Store() Store {
 	return s.store
 }
 
-// GetCover extracts the cover image from the book file on-the-fly.
-// Returns ErrUnsupportedFormat for non-EPUB books.
+// GetCover returns the cover image for a book.
+// It tries the stored cover file first, then falls back to on-the-fly extraction.
+// Returns ErrUnsupportedFormat for non-EPUB books without a stored cover.
 func (s *Service) GetCover(ctx context.Context, bookKey string) (*Cover, string, error) {
 	book, err := s.store.FindByKey(ctx, bookKey)
 	if err != nil {
 		return nil, "", err
 	}
+
+	// Try stored cover first.
+	if book.CoverStoragePath != "" {
+		coverFullPath := filepath.Join(s.storage.Root(), filepath.FromSlash(book.CoverStoragePath))
+		if data, readErr := os.ReadFile(coverFullPath); readErr == nil && len(data) > 0 {
+			return &Cover{MediaType: mediaTypeForPath(coverFullPath), Data: data}, book.Title, nil
+		}
+	}
+
+	// Fall back to on-the-fly extraction from the original file.
 	if book.Format != "epub" {
 		return nil, "", fmt.Errorf("%w: cover not available for format %s", ErrUnsupportedFormat, book.Format)
 	}
@@ -58,12 +69,30 @@ func (s *Service) GetCover(ctx context.Context, bookKey string) (*Cover, string,
 	}
 	cover, err := importer.Cover(ctx, fullPath)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, "", ErrNotFound
+		}
 		return nil, "", err
 	}
 	if cover == nil {
 		return nil, "", ErrNotFound
 	}
 	return cover, book.Title, nil
+}
+
+func mediaTypeForPath(p string) string {
+	switch strings.ToLower(filepath.Ext(p)) {
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".webp":
+		return "image/webp"
+	case ".gif":
+		return "image/gif"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 func (s *Service) ImportUploadedFile(ctx context.Context, input UploadInput) (Book, error) {
@@ -95,24 +124,37 @@ func (s *Service) ImportUploadedFile(ctx context.Context, input UploadInput) (Bo
 	if err := os.Rename(input.TempPath, finalPath); err != nil {
 		return Book{}, err
 	}
+	// Extract and store cover image if available.
+	coverPath := ""
+	if cover, coverErr := importer.Cover(ctx, finalPath); coverErr == nil && cover != nil && len(cover.Data) > 0 {
+		coverRelPath := s.storage.RelativeCoverPath(format, sha, bookKey, cover.MediaType)
+		coverFullPath := filepath.Join(s.storage.Root(), filepath.FromSlash(coverRelPath))
+		if mkdirErr := os.MkdirAll(filepath.Dir(coverFullPath), 0755); mkdirErr == nil {
+			if writeErr := os.WriteFile(coverFullPath, cover.Data, 0644); writeErr == nil {
+				coverPath = coverRelPath
+			}
+		}
+	}
+
 	now := time.Now()
 	book := Book{
-		BookKey:      bookKey,
-		Title:        fallbackTitle(inspected.Title, input.OriginalFilename),
-		Author:       inspected.Author,
-		Description:  inspected.Description,
-		Format:       format,
-		Filename:     input.OriginalFilename,
-		StoragePath:  relativePath,
-		FileSize:     size,
-		ContentSHA1:  sha,
-		Language:     inspected.Language,
-		ChapterCount: inspected.ChapterCount,
-		WordCount:    inspected.WordCount,
-		Status:       StatusDraft,
-		Source:       "admin_upload",
-		UploadedAt:   &now,
-		UpdatedBy:    input.AdminUsername,
+		BookKey:          bookKey,
+		Title:            fallbackTitle(inspected.Title, input.OriginalFilename),
+		Author:           inspected.Author,
+		Description:      inspected.Description,
+		Format:           format,
+		Filename:         input.OriginalFilename,
+		StoragePath:      relativePath,
+		CoverStoragePath: coverPath,
+		FileSize:         size,
+		ContentSHA1:      sha,
+		Language:         inspected.Language,
+		ChapterCount:     inspected.ChapterCount,
+		WordCount:        inspected.WordCount,
+		Status:           StatusDraft,
+		Source:           "admin_upload",
+		UploadedAt:       &now,
+		UpdatedBy:        input.AdminUsername,
 	}
 	if err := s.store.Create(ctx, book); err != nil {
 		_ = os.Remove(finalPath)

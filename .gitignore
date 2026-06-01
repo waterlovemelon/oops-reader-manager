@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+web/dist/
+web/tsconfig.tsbuildinfo
+
+# Playwright MCP tool artifacts
+.playwright-mcp/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+service/bin/
+
+# Env / secrets
+*.env
+.env.local
