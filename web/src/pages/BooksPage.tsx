@@ -1,5 +1,5 @@
 import { UploadOutlined, SearchOutlined, ReloadOutlined, StopOutlined, ClockCircleOutlined, SyncOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined } from '@ant-design/icons';
-import { Button, Card, Descriptions, Input, Modal, Select, Space, Table, Tag, Typography, Upload, message, Form, Progress, Tooltip } from 'antd';
+import { Button, Card, Checkbox, Descriptions, Input, Modal, Select, Space, Table, Tag, Typography, Upload, message, Form, Progress, Tooltip } from 'antd';
 import type { UploadProps } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -53,6 +53,8 @@ export function BooksPage() {
   const [editForm] = Form.useForm();
   const [detailBook, setDetailBook] = useState<CatalogBook | null>(null);
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  const [deleteBook, setDeleteBook] = useState<CatalogBook | null>(null);
+  const [deleteFiles, setDeleteFiles] = useState(false);
 
   // Import jobs state
   const [importJobs, setImportJobs] = useState<ImportJob[]>([]);
@@ -184,10 +186,14 @@ export function BooksPage() {
     setImportJobs((prev) => prev.filter((j) => j.job_id !== jobID));
   };
 
-  const handleStatusChange = async (bookKey: string, newStatus: string) => {
+  const handleStatusChange = async (bookKey: string, newStatus: string, delFiles?: boolean) => {
     try {
-      await updateBookStatus(bookKey, newStatus);
-      message.success('状态已更新');
+      const res = await updateBookStatus(bookKey, newStatus, delFiles);
+      if (res.warning) {
+        message.warning(res.warning);
+      } else {
+        message.success('状态已更新');
+      }
       fetchBooks();
     } catch (error) {
       message.error(error instanceof Error ? error.message : '操作失败');
@@ -365,11 +371,8 @@ export function BooksPage() {
                   )}
                   {record.status !== 'deleted' && (
                     <Button size="small" danger onClick={() => {
-                      Modal.confirm({
-                        title: '确认删除？',
-                        content: `确定要删除《${record.title}》吗？`,
-                        onOk: () => handleStatusChange(record.book_key, 'deleted'),
-                      });
+                      setDeleteBook(record);
+                      setDeleteFiles(false);
                     }}>删除</Button>
                   )}
                 </Space>
@@ -400,6 +403,27 @@ export function BooksPage() {
             <Input />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="确认删除？"
+        open={!!deleteBook}
+        onCancel={() => { setDeleteBook(null); setDeleteFiles(false); }}
+        onOk={() => {
+          if (deleteBook) {
+            handleStatusChange(deleteBook.book_key, 'deleted', deleteFiles || undefined);
+          }
+          setDeleteBook(null);
+          setDeleteFiles(false);
+        }}
+        okText="删除"
+        okButtonProps={{ danger: true }}
+        destroyOnHidden
+      >
+        <p>确定要删除《{deleteBook?.title}》吗？</p>
+        <Checkbox checked={deleteFiles} onChange={(e) => setDeleteFiles(e.target.checked)}>
+          同时删除源文件（不可恢复）
+        </Checkbox>
       </Modal>
 
       <Modal

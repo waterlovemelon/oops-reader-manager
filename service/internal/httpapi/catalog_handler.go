@@ -163,7 +163,8 @@ func (h *CatalogHandler) Update(c *gin.Context) {
 }
 
 type updateBookStatusRequest struct {
-	Status string `json:"status" binding:"required"`
+	Status     string `json:"status" binding:"required"`
+	DeleteFiles bool   `json:"delete_files"`
 }
 
 func (h *CatalogHandler) UpdateStatus(c *gin.Context) {
@@ -192,20 +193,38 @@ func (h *CatalogHandler) UpdateStatus(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	oldStatus := existing.Status
 	if err := h.service.Store().UpdateStatus(c.Request.Context(), bookKey, newStatus, claims.Username); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	auditAction := "status_change"
+	deleteFilesErr := error(nil)
+	if newStatus == catalog.StatusDeleted && req.DeleteFiles {
+		deleteFilesErr = h.service.DeleteBookFiles(*existing)
+		if deleteFilesErr != nil {
+			auditAction = "delete_files_error"
+		} else {
+			auditAction = "delete_with_files"
+		}
+	}
+
 	_ = h.auditSvc.Record(c.Request.Context(), audit.Entry{
 		AdminUsername: claims.Username,
-		Action:        "status_change",
+		Action:        auditAction,
 		ResourceType:  "book",
 		ResourceID:    bookKey,
 		IPAddress:     c.ClientIP(),
 		UserAgent:     c.Request.UserAgent(),
 	})
-	_ = oldStatus
+
+	if deleteFilesErr != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"data":  gin.H{"book_key": bookKey, "status": string(newStatus)},
+			"warning": "书籍已删除，但源文件删除失败: " + deleteFilesErr.Error(),
+		})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"book_key": bookKey, "status": string(newStatus)}})
 }
 

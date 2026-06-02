@@ -1,6 +1,8 @@
 package catalog
 
 import (
+	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -38,6 +40,24 @@ func (s *LocalStorage) RelativeCoverPath(format, sha1, bookKey, mediaType string
 	a, b := hashPrefix(sha1)
 	ext := extForMediaType(mediaType)
 	return filepath.ToSlash(filepath.Join("covers", format, a, b, bookKey+ext))
+}
+
+// DeleteFiles removes the original book file and optional cover file from disk.
+// Missing files are silently ignored.
+func (s *LocalStorage) DeleteFiles(storagePath, coverStoragePath string) error {
+	if storagePath != "" {
+		full := filepath.Join(s.root, filepath.FromSlash(storagePath))
+		if err := os.Remove(full); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	if coverStoragePath != "" {
+		full := filepath.Join(s.root, filepath.FromSlash(coverStoragePath))
+		if err := os.Remove(full); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 func extForMediaType(mediaType string) string {

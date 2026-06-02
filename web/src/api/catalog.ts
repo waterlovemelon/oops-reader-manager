@@ -67,10 +67,12 @@ export function updateBook(bookKey: string, data: { title?: string; author?: str
   });
 }
 
-export function updateBookStatus(bookKey: string, status: string) {
-  return request<{ data: { book_key: string; status: string } }>(`/admin/catalog/books/${encodeURIComponent(bookKey)}/status`, {
+export function updateBookStatus(bookKey: string, status: string, deleteFiles?: boolean) {
+  const body: Record<string, unknown> = { status };
+  if (deleteFiles) body.delete_files = true;
+  return request<{ data: { book_key: string; status: string }; warning?: string }>(`/admin/catalog/books/${encodeURIComponent(bookKey)}/status`, {
     method: 'PATCH',
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(body),
   });
 }
 
