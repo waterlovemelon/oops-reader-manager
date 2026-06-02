@@ -16,6 +16,7 @@ import (
 	"github.com/oops-reader/oops-reader-manager/service/internal/dashboard"
 	"github.com/oops-reader/oops-reader-manager/service/internal/entitlementadmin"
 	"github.com/oops-reader/oops-reader-manager/service/internal/importjob"
+	"github.com/oops-reader/oops-reader-manager/service/internal/recommendation"
 	"github.com/oops-reader/oops-reader-manager/service/internal/usersadmin"
 	"go.uber.org/zap"
 )
@@ -126,6 +127,16 @@ func NewRouter(deps Deps) *gin.Engine {
 	admin.POST("/users/:id/entitlements", AdminRequired(authService), entitlementHandler.Create)
 	admin.POST("/entitlements/:id/revoke", AdminRequired(authService), entitlementHandler.Revoke)
 	admin.POST("/entitlements/:id/extend", AdminRequired(authService), entitlementHandler.Extend)
+
+	// Recommendations
+	recStore := recommendation.NewMySQLStore(deps.DB)
+	recSvc := recommendation.NewService(recStore)
+	recHandler := NewRecommendationHandler(recSvc, auditSvc)
+	admin.GET("/recommendations/books", AdminRequired(authService), recHandler.List)
+	admin.GET("/recommendations/books/:id", AdminRequired(authService), recHandler.Get)
+	admin.POST("/recommendations/books", AdminRequired(authService), recHandler.Create)
+	admin.PATCH("/recommendations/books/:id", AdminRequired(authService), recHandler.Update)
+	admin.DELETE("/recommendations/books/:id", AdminRequired(authService), recHandler.Delete)
 
 	return router
 }
