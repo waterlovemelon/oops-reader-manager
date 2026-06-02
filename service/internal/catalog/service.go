@@ -7,11 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/oops-reader/oops-reader-manager/service/internal/imageutil"
 )
 
 var ErrDuplicateBook = errors.New("duplicate catalog book")
@@ -39,6 +42,11 @@ func NewService(store Store, storage *LocalStorage, importers []Importer) *Servi
 
 func (s *Service) Store() Store {
 	return s.store
+}
+
+// DeleteBookFiles removes the original and cover files for a book from disk.
+func (s *Service) DeleteBookFiles(book Book) error {
+	return s.storage.DeleteFiles(book.StoragePath, book.CoverStoragePath)
 }
 
 // GetCover returns the cover image for a book.
@@ -76,6 +84,11 @@ func (s *Service) GetCover(ctx context.Context, bookKey string) (*Cover, string,
 	}
 	if cover == nil {
 		return nil, "", ErrNotFound
+	}
+	// Compress on-the-fly extracted covers too.
+	if compressed, mediaType, resizeErr := imageutil.ResizeCover(cover.Data, cover.MediaType); resizeErr == nil {
+		cover.Data = compressed
+		cover.MediaType = mediaType
 	}
 	return cover, book.Title, nil
 }
@@ -124,9 +137,20 @@ func (s *Service) ImportUploadedFile(ctx context.Context, input UploadInput) (Bo
 	if err := os.Rename(input.TempPath, finalPath); err != nil {
 		return Book{}, err
 	}
-	// Extract and store cover image if available.
+	// Extract, compress, and store cover image if available.
 	coverPath := ""
 	if cover, coverErr := importer.Cover(ctx, finalPath); coverErr == nil && cover != nil && len(cover.Data) > 0 {
+		originalSize := len(cover.Data)
+		compressed, mediaType, resizeErr := imageutil.ResizeCover(cover.Data, cover.MediaType)
+		if resizeErr == nil {
+			cover.Data = compressed
+			cover.MediaType = mediaType
+			slog.Info("cover compressed",
+				"book_key", bookKey,
+				"original_bytes", originalSize,
+				"compressed_bytes", len(compressed),
+			)
+		}
 		coverRelPath := s.storage.RelativeCoverPath(format, sha, bookKey, cover.MediaType)
 		coverFullPath := filepath.Join(s.storage.Root(), filepath.FromSlash(coverRelPath))
 		if mkdirErr := os.MkdirAll(filepath.Dir(coverFullPath), 0755); mkdirErr == nil {
