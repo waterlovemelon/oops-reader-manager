@@ -1,6 +1,7 @@
-import { UploadOutlined, SearchOutlined, ReloadOutlined, StopOutlined, ClockCircleOutlined, SyncOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined } from '@ant-design/icons';
+import { UploadOutlined, SearchOutlined, ReloadOutlined, StopOutlined, ClockCircleOutlined, SyncOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, InboxOutlined } from '@ant-design/icons';
 import { Button, Card, Checkbox, Descriptions, Input, Modal, Select, Space, Table, Tag, Typography, Upload, message, Form, Progress, Tooltip } from 'antd';
 import type { UploadProps } from 'antd';
+import type { RcFile } from 'antd/es/upload';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CatalogBook, ImportJob, listBooks, updateBook, updateBookStatus,
@@ -55,6 +56,8 @@ export function BooksPage() {
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [deleteBook, setDeleteBook] = useState<CatalogBook | null>(null);
   const [deleteFiles, setDeleteFiles] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const dragCounter = useRef(0);
 
   // Import jobs state
   const [importJobs, setImportJobs] = useState<ImportJob[]>([]);
@@ -186,6 +189,35 @@ export function BooksPage() {
     setImportJobs((prev) => prev.filter((j) => j.job_id !== jobID));
   };
 
+  // Drag-and-drop handlers — the entire page acts as a drop zone.
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current += 1;
+    if (dragCounter.current === 1) setDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current -= 1;
+    if (dragCounter.current === 0) setDragging(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault(); // required to allow drop
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setDragging(false);
+
+    const files = Array.from(e.dataTransfer.files).filter((f) =>
+      f.name.endsWith('.epub') || f.name.endsWith('.txt'),
+    );
+    if (files.length === 0) return;
+    files.forEach((f) => handleUpload(f as unknown as RcFile, []));
+  };
+
   const handleStatusChange = async (bookKey: string, newStatus: string, delFiles?: boolean) => {
     try {
       const res = await updateBookStatus(bookKey, newStatus, delFiles);
@@ -238,7 +270,33 @@ export function BooksPage() {
   }, [coverUrl]);
 
   return (
-    <>
+    <div
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      style={{ position: 'relative', minHeight: '100%' }}
+    >
+      {dragging && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(24, 144, 255, 0.08)',
+            border: '3px dashed #1890ff',
+            borderRadius: 12,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+          }}
+        >
+          <InboxOutlined style={{ fontSize: 64, color: '#1890ff', marginBottom: 16 }} />
+          <span style={{ fontSize: 18, color: '#1890ff', fontWeight: 600 }}>拖放 EPUB / TXT 文件到此处导入</span>
+        </div>
+      )}
       {/* Active import jobs */}
       {importJobs.length > 0 && (
         <Card title="导入任务" size="small" style={{ marginBottom: 16 }}>
@@ -470,6 +528,6 @@ export function BooksPage() {
           </div>
         )}
       </Modal>
-    </>
+    </div>
   );
 }
