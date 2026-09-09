@@ -74,3 +74,24 @@ func TestDeleteFilesSkipsEmptyCoverPath(t *testing.T) {
 		t.Fatalf("original file should be removed")
 	}
 }
+
+func TestDeleteFilesKeepsLegacySiblingCovers(t *testing.T) {
+	dir := t.TempDir()
+	legacyOne := filepath.Join(dir, "covers", "epub", "ab", "cd", "one.jpg")
+	legacyTwo := filepath.Join(dir, "covers", "epub", "ab", "cd", "two.jpg")
+	if err := os.MkdirAll(filepath.Dir(legacyOne), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{legacyOne, legacyTwo} {
+		if err := os.WriteFile(path, []byte("data"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	storage := NewLocalStorage(dir, filepath.Join(dir, "tmp"))
+	if err := storage.DeleteFiles("", "covers/epub/ab/cd/one.jpg"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(legacyTwo); err != nil {
+		t.Fatalf("legacy sibling was removed: %v", err)
+	}
+}

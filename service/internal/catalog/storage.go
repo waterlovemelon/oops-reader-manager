@@ -42,6 +42,11 @@ func (s *LocalStorage) RelativeCoverPath(format, sha1, bookKey, mediaType string
 	return filepath.ToSlash(filepath.Join("covers", format, a, b, bookKey+ext))
 }
 
+func (s *LocalStorage) RelativeCoverDirectory(format, sha1, bookKey string) string {
+	a, b := hashPrefix(sha1)
+	return filepath.ToSlash(filepath.Join("covers", format, a, b, bookKey))
+}
+
 // DeleteFiles removes the original book file and optional cover file from disk.
 // Missing files are silently ignored.
 func (s *LocalStorage) DeleteFiles(storagePath, coverStoragePath string) error {
@@ -55,6 +60,14 @@ func (s *LocalStorage) DeleteFiles(storagePath, coverStoragePath string) error {
 		full := filepath.Join(s.root, filepath.FromSlash(coverStoragePath))
 		if err := os.Remove(full); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
+		}
+		variantDir := filepath.Dir(full)
+		// Legacy covers share their hash-prefix directory, so only remove a
+		// directory proven to be a new per-book variant directory.
+		if _, err := os.Stat(filepath.Join(variantDir, "variants.json")); err == nil {
+			if err := os.RemoveAll(variantDir); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

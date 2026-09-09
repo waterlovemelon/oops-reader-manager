@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,48 +48,71 @@ func (s *Service) DeleteBookFiles(book Book) error {
 	return s.storage.DeleteFiles(book.StoragePath, book.CoverStoragePath)
 }
 
-// GetCover returns the cover image for a book.
-// It tries the stored cover file first, then falls back to on-the-fly extraction.
-// Returns ErrUnsupportedFormat for non-EPUB books without a stored cover.
+// GetCover returns the default small cover rendition. Serving never extracts
+// data from the original EPUB or performs an image conversion.
 func (s *Service) GetCover(ctx context.Context, bookKey string) (*Cover, string, error) {
+	return s.GetCoverForWidth(ctx, bookKey, imageutil.SmallWidth)
+}
+
+// GetCoverForWidth selects an already generated rendition nearest to the
+// physical width requested by a client. Ties choose the larger rendition.
+func (s *Service) GetCoverForWidth(ctx context.Context, bookKey string, widthPx int) (*Cover, string, error) {
 	book, err := s.store.FindByKey(ctx, bookKey)
 	if err != nil {
 		return nil, "", err
 	}
-
-	// Try stored cover first.
-	if book.CoverStoragePath != "" {
-		coverFullPath := filepath.Join(s.storage.Root(), filepath.FromSlash(book.CoverStoragePath))
-		if data, readErr := os.ReadFile(coverFullPath); readErr == nil && len(data) > 0 {
-			return &Cover{MediaType: mediaTypeForPath(coverFullPath), Data: data}, book.Title, nil
-		}
-	}
-
-	// Fall back to on-the-fly extraction from the original file.
-	if book.Format != "epub" {
-		return nil, "", fmt.Errorf("%w: cover not available for format %s", ErrUnsupportedFormat, book.Format)
-	}
-	fullPath := filepath.Join(s.storage.Root(), filepath.FromSlash(book.StoragePath))
-	importer, ok := s.importers[book.Format]
-	if !ok {
-		return nil, "", ErrUnsupportedFormat
-	}
-	cover, err := importer.Cover(ctx, fullPath)
+	manifest, dirRel, err := s.storage.ReadCoverVariantManifest(book.CoverStoragePath)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, "", ErrNotFound
-		}
 		return nil, "", err
 	}
-	if cover == nil {
-		return nil, "", ErrNotFound
+	variant, err := nearestCoverVariant(manifest.Variants, widthPx)
+	if err != nil {
+		return nil, "", err
 	}
-	// Compress on-the-fly extracted covers too.
-	if compressed, mediaType, resizeErr := imageutil.ResizeCover(cover.Data, cover.MediaType); resizeErr == nil {
-		cover.Data = compressed
-		cover.MediaType = mediaType
+	data, err := os.ReadFile(filepath.Join(s.storage.Root(), filepath.FromSlash(dirRel), variant.Path))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, "", fmt.Errorf("%w: selected cover variant is missing", ErrNotFound)
+		}
+		return nil, "", fmt.Errorf("read selected cover variant: %w", err)
 	}
-	return cover, book.Title, nil
+	if len(data) == 0 {
+		return nil, "", fmt.Errorf("%w: selected cover variant is empty", ErrNotFound)
+	}
+	return &Cover{MediaType: variant.MediaType, Data: data}, book.Title, nil
+}
+
+// BackfillCoverVariants is intentionally an offline operation. It extracts a
+// cover from the stored original and creates all renditions without changing
+// cover_storage_path, so it is safe to run before the reader API is upgraded.
+func (s *Service) BackfillCoverVariants(ctx context.Context, bookKey string) (bool, error) {
+	book, err := s.store.FindByKey(ctx, bookKey)
+	if err != nil {
+		return false, err
+	}
+	if err := s.storage.CoverVariantsReady(book.CoverStoragePath); err == nil {
+		return false, nil
+	}
+	importer, ok := s.importers[book.Format]
+	if !ok {
+		return false, fmt.Errorf("%w: %s", ErrUnsupportedFormat, book.Format)
+	}
+	cover, err := importer.Cover(ctx, filepath.Join(s.storage.Root(), filepath.FromSlash(book.StoragePath)))
+	if err != nil {
+		return false, fmt.Errorf("extract cover for backfill: %w", err)
+	}
+	if cover == nil || len(cover.Data) == 0 {
+		return false, fmt.Errorf("%w: source book has no cover", ErrNotFound)
+	}
+	variants, err := imageutil.BuildCoverVariants(cover.Data, cover.MediaType)
+	if err != nil {
+		return false, err
+	}
+	_, _, err = s.storage.WriteCoverVariants(book.Format, book.ContentSHA1, book.BookKey, variants)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func mediaTypeForPath(p string) string {
@@ -137,26 +159,24 @@ func (s *Service) ImportUploadedFile(ctx context.Context, input UploadInput) (Bo
 	if err := os.Rename(input.TempPath, finalPath); err != nil {
 		return Book{}, err
 	}
-	// Extract, compress, and store cover image if available.
+	// Generate all cover renditions during import. Request handling is strictly
+	// read-only and never unpacks an EPUB or re-encodes an image.
 	coverPath := ""
-	if cover, coverErr := importer.Cover(ctx, finalPath); coverErr == nil && cover != nil && len(cover.Data) > 0 {
-		originalSize := len(cover.Data)
-		compressed, mediaType, resizeErr := imageutil.ResizeCover(cover.Data, cover.MediaType)
-		if resizeErr == nil {
-			cover.Data = compressed
-			cover.MediaType = mediaType
-			slog.Info("cover compressed",
-				"book_key", bookKey,
-				"original_bytes", originalSize,
-				"compressed_bytes", len(compressed),
-			)
+	cover, coverErr := importer.Cover(ctx, finalPath)
+	if coverErr != nil {
+		_ = os.Remove(finalPath)
+		return Book{}, fmt.Errorf("extract import-time cover: %w", coverErr)
+	}
+	if cover != nil && len(cover.Data) > 0 {
+		variants, err := imageutil.BuildCoverVariants(cover.Data, cover.MediaType)
+		if err != nil {
+			_ = os.Remove(finalPath)
+			return Book{}, err
 		}
-		coverRelPath := s.storage.RelativeCoverPath(format, sha, bookKey, cover.MediaType)
-		coverFullPath := filepath.Join(s.storage.Root(), filepath.FromSlash(coverRelPath))
-		if mkdirErr := os.MkdirAll(filepath.Dir(coverFullPath), 0755); mkdirErr == nil {
-			if writeErr := os.WriteFile(coverFullPath, cover.Data, 0644); writeErr == nil {
-				coverPath = coverRelPath
-			}
+		_, coverPath, err = s.storage.WriteCoverVariants(format, sha, bookKey, variants)
+		if err != nil {
+			_ = os.Remove(finalPath)
+			return Book{}, err
 		}
 	}
 
@@ -182,6 +202,7 @@ func (s *Service) ImportUploadedFile(ctx context.Context, input UploadInput) (Bo
 	}
 	if err := s.store.Create(ctx, book); err != nil {
 		_ = os.Remove(finalPath)
+		_ = s.storage.DeleteFiles("", coverPath)
 		return Book{}, err
 	}
 	return book, nil

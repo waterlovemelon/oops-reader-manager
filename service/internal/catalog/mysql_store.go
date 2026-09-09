@@ -128,6 +128,15 @@ WHERE book_key = ?`,
 	return nil
 }
 
+func (s *MySQLStore) UpdateCoverStoragePath(ctx context.Context, bookKey, coverStoragePath string) error {
+	_, err := s.db.ExecContext(ctx, `
+UPDATE catalog_books SET cover_storage_path = ? WHERE book_key = ?`, nullableString(coverStoragePath), bookKey)
+	if err != nil {
+		return fmt.Errorf("update cover storage path: %w", err)
+	}
+	return nil
+}
+
 func (s *MySQLStore) UpdateStatus(ctx context.Context, bookKey string, status BookStatus, admin string) error {
 	_, err := s.db.ExecContext(ctx, `
 UPDATE catalog_books

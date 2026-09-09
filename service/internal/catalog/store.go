@@ -8,5 +8,6 @@ type Store interface {
 	List(ctx context.Context, query string, status BookStatus, limit, offset int) ([]Book, int, error)
 	Create(ctx context.Context, book Book) error
 	Update(ctx context.Context, book Book) error
+	UpdateCoverStoragePath(ctx context.Context, bookKey, coverStoragePath string) error
 	UpdateStatus(ctx context.Context, bookKey string, status BookStatus, admin string) error
 }

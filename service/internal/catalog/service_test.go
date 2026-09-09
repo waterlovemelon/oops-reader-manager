@@ -45,6 +45,9 @@ func (s *fakeCatalogStore) Create(ctx context.Context, book Book) error {
 }
 
 func (s *fakeCatalogStore) Update(ctx context.Context, book Book) error { return nil }
+func (s *fakeCatalogStore) UpdateCoverStoragePath(ctx context.Context, bookKey, coverStoragePath string) error {
+	return nil
+}
 func (s *fakeCatalogStore) UpdateStatus(ctx context.Context, bookKey string, status BookStatus, admin string) error {
 	return nil
 }

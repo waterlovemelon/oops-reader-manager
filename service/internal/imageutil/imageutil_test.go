@@ -38,15 +38,55 @@ func TestResizeCover_LargeJPEG(t *testing.T) {
 		t.Fatalf("failed to decode result: %v", err)
 	}
 	bounds := result.Bounds()
-	if bounds.Dx() != MaxCoverWidth {
-		t.Errorf("expected width %d, got %d", MaxCoverWidth, bounds.Dx())
+	if bounds.Dx() != LargeWidth {
+		t.Errorf("expected width %d, got %d", LargeWidth, bounds.Dx())
 	}
-	expectedH := int(float64(4500) * (float64(MaxCoverWidth) / float64(3000)))
+	expectedH := 4500 * LargeWidth / 3000
 	if bounds.Dy() != expectedH {
 		t.Errorf("expected height %d, got %d", expectedH, bounds.Dy())
 	}
 	t.Logf("Original: %d bytes, Compressed: %d bytes (%.1f%% reduction)",
 		len(original), len(compressed), 100*(1-float64(len(compressed))/float64(len(original))))
+}
+
+func TestBuildCoverVariantsReusesSmallSource(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 200, 100))
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	variants, err := BuildCoverVariants(buf.Bytes(), "image/png")
+	if err != nil {
+		t.Fatalf("BuildCoverVariants: %v", err)
+	}
+	if len(variants) != 3 {
+		t.Fatalf("variants = %d, want 3", len(variants))
+	}
+	for _, variant := range variants {
+		if variant.Width != 200 || variant.Height != 100 {
+			t.Errorf("%s = %dx%d, want 200x100", variant.Key, variant.Width, variant.Height)
+		}
+		if variant.SHA256 != variants[0].SHA256 {
+			t.Errorf("%s did not reuse physical rendition", variant.Key)
+		}
+	}
+}
+
+func TestBuildCoverVariantsUsesThreeWidths(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 1600, 800))
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95}); err != nil {
+		t.Fatal(err)
+	}
+	variants, err := BuildCoverVariants(buf.Bytes(), "image/jpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, width := range []int{SmallWidth, MediumWidth, LargeWidth} {
+		if variants[i].Width != width || variants[i].Height != width/2 {
+			t.Errorf("%s = %dx%d, want %dx%d", variants[i].Key, variants[i].Width, variants[i].Height, width, width/2)
+		}
+	}
 }
 
 func TestResizeCover_SmallImage(t *testing.T) {
