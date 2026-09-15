@@ -19,10 +19,15 @@ import (
 var ErrDuplicateBook = errors.New("duplicate catalog book")
 var ErrUnsupportedFormat = errors.New("unsupported book format")
 
+// readingFormatEPUB is the only format with a reading protocol. TXT books are
+// read from the stored original, so they have no artifacts to build.
+const readingFormatEPUB = "epub"
+
 type Service struct {
 	store     Store
 	storage   *LocalStorage
 	importers map[string]Importer
+	preparer  ReadingPreparer
 }
 
 type UploadInput struct {
@@ -39,13 +44,35 @@ func NewService(store Store, storage *LocalStorage, importers []Importer) *Servi
 	return &Service{store: store, storage: storage, importers: byFormat}
 }
 
+// SetReadingPreparer installs the reading artifact builder run on import.
+// Without one, imported EPUBs are readable only until the reader backend is
+// asked for content it cannot find.
+func (s *Service) SetReadingPreparer(preparer ReadingPreparer) {
+	s.preparer = preparer
+}
+
 func (s *Service) Store() Store {
 	return s.store
 }
 
-// DeleteBookFiles removes the original and cover files for a book from disk.
+// prepareReadingContent builds the artifacts the reader backend serves. It
+// runs after the original is stored so the artifacts always match the file
+// that will be served.
+func (s *Service) prepareReadingContent(ctx context.Context, format, bookKey, sourcePath string) error {
+	if s.preparer == nil || format != readingFormatEPUB {
+		return nil
+	}
+	return s.preparer.Prepare(ctx, bookKey, sourcePath)
+}
+
+// DeleteBookFiles removes the original, cover, and reading artifacts for a
+// book from disk. Reading artifacts are keyed by book, so an orphaned
+// directory would otherwise outlive the book it belongs to.
 func (s *Service) DeleteBookFiles(book Book) error {
-	return s.storage.DeleteFiles(book.StoragePath, book.CoverStoragePath)
+	if err := s.storage.DeleteFiles(book.StoragePath, book.CoverStoragePath); err != nil {
+		return err
+	}
+	return s.storage.DeleteReadingContent(book.BookKey)
 }
 
 // GetCover returns the default small cover rendition. Serving never extracts
@@ -180,6 +207,15 @@ func (s *Service) ImportUploadedFile(ctx context.Context, input UploadInput) (Bo
 		}
 	}
 
+	// Build the reading artifacts before the book becomes addressable. A book
+	// whose artifacts are missing would be listed and openable but answer 409
+	// on every reading request, so a failure here aborts the import.
+	if err := s.prepareReadingContent(ctx, format, bookKey, finalPath); err != nil {
+		_ = os.Remove(finalPath)
+		_ = s.storage.DeleteFiles("", coverPath)
+		return Book{}, err
+	}
+
 	now := time.Now()
 	book := Book{
 		BookKey:          bookKey,
@@ -203,6 +239,7 @@ func (s *Service) ImportUploadedFile(ctx context.Context, input UploadInput) (Bo
 	if err := s.store.Create(ctx, book); err != nil {
 		_ = os.Remove(finalPath)
 		_ = s.storage.DeleteFiles("", coverPath)
+		_ = s.storage.DeleteReadingContent(bookKey)
 		return Book{}, err
 	}
 	return book, nil

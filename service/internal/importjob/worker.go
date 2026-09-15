@@ -191,6 +191,8 @@ func classifyError(err error) (code, msg, internal string) {
 		return ErrCodeUnsupportedFormat, "不支持的文件格式", errStr
 	case errors.Is(err, catalog.ErrDuplicateBook):
 		return ErrCodeDuplicateBook, "书籍已存在（重复上传）", errStr
+	case errors.Is(err, catalog.ErrReadingPreprocess):
+		return ErrCodeReadingPreprocess, "阅读内容生成失败，请重试导入", errStr
 	case isTempFileMissing(err):
 		return ErrCodeTempFileMissing, "临时文件丢失，请重新上传", errStr
 	case isStorageError(err):
@@ -202,7 +204,7 @@ func classifyError(err error) (code, msg, internal string) {
 
 func isRetryable(errCode string) bool {
 	switch errCode {
-	case ErrCodeStorageError, ErrCodeDatabaseError, ErrCodeJobTimeout:
+	case ErrCodeStorageError, ErrCodeDatabaseError, ErrCodeJobTimeout, ErrCodeReadingPreprocess:
 		return true
 	default:
 		return false

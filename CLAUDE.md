@@ -56,13 +56,15 @@ npm run lint         # eslint
 
 ### Data Flow: Book Upload
 
-1. Frontend sends multipart file → `POST /admin/catalog/books/upload`
+1. Frontend sends multipart file → `POST /admin/catalog/books/upload` (or `POST /admin/catalog/import-jobs` for the async queue)
 2. `AdminRequired` middleware validates Bearer token
 3. Handler saves to temp dir → `catalog.Service.ImportUploadedFile`
 4. SHA1 computed → duplicate check → format-specific importer (EPUB or TXT)
 5. Importer extracts metadata (title, author, chapters, cover)
 6. File stored at `catalog-root/originals/<format>/<sha1[0:2]>/<sha1[2:4]>/<book_key>.<ext>`
-7. DB record inserted with `status = draft` (reader backend only serves `status = active`)
+7. Cover renditions generated from the stored original
+8. Reading artifacts built into `catalog-root/.reading/<book_key>/<version>` by `catalog.reading_preprocess.binary`. The reader backend serves only these artifacts, so a failure aborts the import (retryable) and removes the stored files. TXT books have no artifacts.
+9. DB record inserted with `status = draft` (reader backend only serves `status = active`)
 
 ## Key Conventions
 

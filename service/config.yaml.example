@@ -22,6 +22,10 @@ catalog:
     provider: local
     root: /data/oops-reader/catalog
     temp_root: /data/oops-reader/catalog-tmp
+    # reader_content_preprocess tool (built from oops-reader-app
+    # packages/reader_content). Import fails when it cannot build artifacts.
+    # Empty disables artifact building.
+    preprocessor_path: /opt/oops-reader/bin/reader_content_preprocess
 
 log:
   level: info

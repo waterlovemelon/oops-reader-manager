@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -72,6 +73,11 @@ func NewRouter(deps Deps) *gin.Engine {
 		catalogStorage,
 		[]catalog.Importer{catalog.TXTImporter{}, catalog.EPUBImporter{}},
 	)
+	if binary := strings.TrimSpace(deps.Config.Catalog.Storage.PreprocessorPath); binary != "" {
+		catalogService.SetReadingPreparer(catalog.NewPreprocessCommand(binary, catalogStorage.Root()))
+	} else {
+		deps.Logger.Warn("reading preprocessing disabled: catalog.storage.preprocessor_path is unset, imported EPUBs will fail to open")
+	}
 	catalogHandler := NewCatalogHandler(catalogService, deps.Config.Catalog.Storage.TempRoot, auditSvc)
 	admin.POST("/catalog/books/upload", AdminRequired(authService), catalogHandler.Upload)
 	admin.GET("/catalog/books", AdminRequired(authService), catalogHandler.List)

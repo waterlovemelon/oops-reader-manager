@@ -45,6 +45,10 @@ type CatalogStorageConfig struct {
 	Provider string `mapstructure:"provider"`
 	Root     string `mapstructure:"root"`
 	TempRoot string `mapstructure:"temp_root"`
+	// PreprocessorPath points at the reader_content_preprocess tool that builds
+	// `.reading/<book_key>/<version>` artifacts next to the stored original.
+	// Empty disables artifact building.
+	PreprocessorPath string `mapstructure:"preprocessor_path"`
 }
 
 type LogConfig struct {

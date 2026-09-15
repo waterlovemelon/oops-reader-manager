@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,6 +70,21 @@ func (s *LocalStorage) DeleteFiles(storagePath, coverStoragePath string) error {
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+// DeleteReadingContent removes the preprocessed reading artifacts of one book.
+// The directory is owned by the import pipeline, so a missing one is not an
+// error. Book keys never contain a path separator, but reject them anyway so a
+// malformed record cannot escape the reading root.
+func (s *LocalStorage) DeleteReadingContent(bookKey string) error {
+	if bookKey == "" || strings.ContainsAny(bookKey, `/\`) || bookKey == "." || bookKey == ".." {
+		return fmt.Errorf("invalid book key for reading content: %q", bookKey)
+	}
+	dir := filepath.Join(s.root, ".reading", bookKey)
+	if err := os.RemoveAll(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
 	return nil
 }

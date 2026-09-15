@@ -42,6 +42,7 @@ const (
 	ErrCodeEmptyContent       = "empty_content"
 	ErrCodeCoverTooLarge      = "cover_too_large"
 	ErrCodeStorageError       = "storage_error"
+	ErrCodeReadingPreprocess  = "reading_preprocess_failed"
 	ErrCodeDatabaseError      = "database_error"
 	ErrCodeJobTimeout         = "job_timeout"
 	ErrCodeInternalError      = "internal_error"
